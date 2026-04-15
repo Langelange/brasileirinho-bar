@@ -40,5 +40,5 @@ print("Gerando executável...")
 print(" ".join(cmd))
 subprocess.check_call(cmd)
 
-print("\n✅ Executável gerado em: dist/BrasileirinhoBar.exe")
-print("   Copie o .exe para qualquer pasta e execute!")
+print("\n[OK] Executavel gerado em: dist/BrasileirinhoBar.exe")
+print("     Copie o .exe para qualquer pasta e execute!")

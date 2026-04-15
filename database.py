@@ -1,25 +1,50 @@
 import sqlite3
 import os
 import sys
+import shutil
+import re
+from datetime import datetime
 
-# Quando empacotado com PyInstaller, salva o banco na pasta do .exe
-if getattr(sys, 'frozen', False):
-    _base = os.path.dirname(sys.executable)
-else:
-    _base = os.path.dirname(os.path.abspath(__file__))
 
-DB_PATH = os.path.join(_base, "brasileirinho.db")
+def _resolver_caminho_banco():
+    if getattr(sys, 'frozen', False):
+        # Windows: usar %APPDATA%/BrasileirinhoBar/ (sempre gravavel)
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            pasta = os.path.join(appdata, "BrasileirinhoBar")
+        else:
+            # Fallback: pasta do executavel (Linux ou APPDATA nao definido)
+            pasta = os.path.dirname(sys.executable)
+    else:
+        # Modo desenvolvimento: pasta do projeto
+        pasta = os.path.dirname(os.path.abspath(__file__))
+
+    os.makedirs(pasta, exist_ok=True)
+    return os.path.join(pasta, "brasileirinho.db")
+
+
+DB_PATH = _resolver_caminho_banco()
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+    except sqlite3.Error as e:
+        raise RuntimeError(
+            f"Nao foi possivel acessar o banco de dados.\n"
+            f"Caminho: {DB_PATH}\n"
+            f"Erro: {e}"
+        )
 
 
 def init_db():
-    conn = get_connection()
+    try:
+        conn = get_connection()
+    except RuntimeError:
+        raise
     cursor = conn.cursor()
 
     cursor.executescript("""
@@ -185,8 +210,9 @@ def excluir_cliente(cliente_id):
 
 def abrir_comanda(cliente_id=None):
     conn = get_connection()
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor = conn.execute(
-        "INSERT INTO comandas (cliente_id) VALUES (?)", (cliente_id,)
+        "INSERT INTO comandas (cliente_id, aberta_em) VALUES (?, ?)", (cliente_id, agora)
     )
     comanda_id = cursor.lastrowid
     conn.commit()
@@ -213,12 +239,13 @@ def listar_comandas(status="aberta"):
 
 def fechar_comanda(comanda_id, forma_pagamento, desconto=0, observacao=""):
     conn = get_connection()
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn.execute("""
         UPDATE comandas
         SET status='fechada', forma_pagamento=?, desconto=?,
-            observacao=?, fechada_em=CURRENT_TIMESTAMP
+            observacao=?, fechada_em=?
         WHERE id=?
-    """, (forma_pagamento, desconto, observacao, comanda_id))
+    """, (forma_pagamento, desconto, observacao, agora, comanda_id))
     conn.commit()
     conn.close()
 
@@ -283,33 +310,34 @@ def total_comanda(comanda_id):
 def relatorio_vendas_dia(data=None):
     conn = get_connection()
     if data is None:
-        filtro_data = "DATE(c.fechada_em) = DATE('now', 'localtime')"
-    else:
-        filtro_data = "DATE(c.fechada_em) = ?"
+        data = datetime.now().strftime("%Y-%m-%d")
 
-    params = () if data is None else (data,)
+    params = (data,)
 
-    resumo = conn.execute(f"""
+    resumo = conn.execute("""
         SELECT COUNT(*) as total_comandas,
-               COALESCE(SUM(ic.quantidade * ic.preco_unitario), 0) as faturamento,
+               COALESCE(SUM(sub.total), 0) as faturamento,
                COALESCE(SUM(c.desconto), 0) as total_descontos
         FROM comandas c
-        LEFT JOIN itens_comanda ic ON ic.comanda_id = c.id
-        WHERE c.status = 'fechada' AND {filtro_data}
+        LEFT JOIN (
+            SELECT comanda_id, SUM(quantidade * preco_unitario) as total
+            FROM itens_comanda GROUP BY comanda_id
+        ) sub ON sub.comanda_id = c.id
+        WHERE c.status = 'fechada' AND DATE(c.fechada_em) = ?
     """, params).fetchone()
 
-    produtos = conn.execute(f"""
+    produtos = conn.execute("""
         SELECT p.nome, SUM(ic.quantidade) as qtd,
                SUM(ic.quantidade * ic.preco_unitario) as total
         FROM itens_comanda ic
         JOIN produtos p ON ic.produto_id = p.id
         JOIN comandas c ON ic.comanda_id = c.id
-        WHERE c.status = 'fechada' AND {filtro_data}
+        WHERE c.status = 'fechada' AND DATE(c.fechada_em) = ?
         GROUP BY p.id
         ORDER BY qtd DESC
     """, params).fetchall()
 
-    pagamentos = conn.execute(f"""
+    pagamentos = conn.execute("""
         SELECT forma_pagamento,
                COUNT(*) as qtd,
                COALESCE(SUM(sub.total), 0) as valor
@@ -318,7 +346,7 @@ def relatorio_vendas_dia(data=None):
             SELECT comanda_id, SUM(quantidade * preco_unitario) as total
             FROM itens_comanda GROUP BY comanda_id
         ) sub ON sub.comanda_id = c.id
-        WHERE c.status = 'fechada' AND {filtro_data}
+        WHERE c.status = 'fechada' AND DATE(c.fechada_em) = ?
         GROUP BY forma_pagamento
     """, params).fetchall()
 
@@ -328,3 +356,50 @@ def relatorio_vendas_dia(data=None):
         "produtos": [dict(r) for r in produtos],
         "pagamentos": [dict(r) for r in pagamentos]
     }
+
+
+# --- Limpeza de dados ---
+
+def contar_comandas_fechadas_antes(data_limite):
+    conn = get_connection()
+    row = conn.execute("""
+        SELECT COUNT(*) as total
+        FROM comandas
+        WHERE status = 'fechada' AND DATE(fechada_em) < ?
+    """, (data_limite,)).fetchone()
+    conn.close()
+    return row["total"]
+
+
+def limpar_comandas_antigas(data_limite):
+    conn = get_connection()
+    # Deletar itens das comandas que serao removidas
+    conn.execute("""
+        DELETE FROM itens_comanda WHERE comanda_id IN (
+            SELECT id FROM comandas
+            WHERE status = 'fechada' AND DATE(fechada_em) < ?
+        )
+    """, (data_limite,))
+    # Deletar as comandas
+    cursor = conn.execute("""
+        DELETE FROM comandas
+        WHERE status = 'fechada' AND DATE(fechada_em) < ?
+    """, (data_limite,))
+    removidas = cursor.rowcount
+    conn.commit()
+    # Recuperar espaco em disco
+    conn.execute("VACUUM")
+    conn.close()
+    return removidas
+
+
+# --- Backup ---
+
+def fazer_backup(destino):
+    shutil.copy2(DB_PATH, destino)
+
+
+# --- Validacao ---
+
+def validar_data(data_str):
+    return bool(re.match(r'^\d{4}-\d{2}-\d{2}$', data_str))

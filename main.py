@@ -5,7 +5,7 @@ Aplicação desktop para gerenciamento de comandas, produtos e clientes.
 """
 
 import customtkinter as ctk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from PIL import Image
 import os
 import sys
@@ -39,7 +39,6 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
-DB_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else BASE_DIR
 
 
 class App(ctk.CTk):
@@ -55,7 +54,12 @@ class App(ctk.CTk):
         self.configure(fg_color=COR_FUNDO)
 
         # Inicializar banco
-        db.init_db()
+        try:
+            db.init_db()
+        except RuntimeError as e:
+            messagebox.showerror("Erro ao abrir banco de dados", str(e))
+            self.destroy()
+            return
 
         # Header com logo
         self._criar_header()
@@ -493,9 +497,12 @@ class App(ctk.CTk):
         def confirmar():
             forma = combo_pag.get()
             try:
-                desconto = float(entry_desc.get() or 0)
+                desconto = float(entry_desc.get().replace(",", ".") or 0)
+                if desconto < 0:
+                    raise ValueError
             except ValueError:
-                desconto = 0
+                messagebox.showwarning("Aviso", "Valor de desconto invalido.")
+                return
             db.fechar_comanda(self.comanda_selecionada_id, forma, desconto)
             janela.destroy()
             self.comanda_selecionada_id = None
@@ -826,6 +833,19 @@ class App(ctk.CTk):
             )
         ).pack(side="left", padx=5, pady=10)
 
+        # Botoes de manutencao (lado direito)
+        ctk.CTkButton(
+            frame_data, text="Fazer Backup", font=FONTE_NORMAL, width=130,
+            fg_color=COR_FUNDO_ENTRADA, hover_color=COR_BORDA,
+            command=self._fazer_backup
+        ).pack(side="right", padx=5, pady=10)
+
+        ctk.CTkButton(
+            frame_data, text="Limpar Antigas", font=FONTE_NORMAL, width=130,
+            fg_color=COR_VERMELHO, hover_color=COR_VERMELHO_HOVER,
+            command=self._limpar_comandas_antigas
+        ).pack(side="right", padx=5, pady=10)
+
         # Resumo cards
         self.frame_resumo = ctk.CTkFrame(tab, fg_color="transparent")
         self.frame_resumo.pack(fill="x", padx=10, pady=5)
@@ -881,6 +901,9 @@ class App(ctk.CTk):
 
     def _gerar_relatorio(self):
         data = self.entry_rel_data.get().strip()
+        if not db.validar_data(data):
+            messagebox.showwarning("Aviso", "Data invalida. Use o formato AAAA-MM-DD.")
+            return
         rel = db.relatorio_vendas_dia(data)
 
         # Atualizar cards
@@ -904,6 +927,84 @@ class App(ctk.CTk):
             self.tree_pagamentos.insert("", "end", values=(
                 pg["forma_pagamento"] or "—", pg["qtd"], f"{pg['valor']:.2f}"
             ))
+
+    def _fazer_backup(self):
+        destino = filedialog.asksaveasfilename(
+            title="Salvar backup do banco de dados",
+            defaultextension=".db",
+            filetypes=[("SQLite Database", "*.db"), ("Todos", "*.*")],
+            initialfile=f"brasileirinho_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        )
+        if not destino:
+            return
+        try:
+            db.fazer_backup(destino)
+            messagebox.showinfo("Backup", f"Backup salvo em:\n{destino}")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao salvar backup:\n{e}")
+
+    def _limpar_comandas_antigas(self):
+        janela = ctk.CTkToplevel(self)
+        janela.title("Limpar Comandas Antigas")
+        janela.geometry("450x280")
+        janela.configure(fg_color=COR_FUNDO)
+        janela.transient(self)
+        janela.grab_set()
+
+        ctk.CTkLabel(janela, text="Limpar Comandas Fechadas", font=FONTE_TITULO,
+                     text_color=COR_AMARELO).pack(pady=(20, 10))
+
+        ctk.CTkLabel(janela, text="Remover comandas fechadas ANTES de:",
+                     font=FONTE_NORMAL, text_color=COR_TEXTO_SECUNDARIO).pack(padx=20, anchor="w")
+
+        entry_data = ctk.CTkEntry(
+            janela, width=200, font=FONTE_NORMAL,
+            fg_color=COR_FUNDO_ENTRADA, border_color=COR_BORDA,
+            placeholder_text="AAAA-MM-DD"
+        )
+        entry_data.pack(padx=20, pady=5)
+
+        self._label_preview_limpeza = ctk.CTkLabel(
+            janela, text="", font=FONTE_NORMAL, text_color=COR_TEXTO_SECUNDARIO
+        )
+        self._label_preview_limpeza.pack(padx=20, pady=5)
+
+        def preview(*_):
+            data = entry_data.get().strip()
+            if db.validar_data(data):
+                qtd = db.contar_comandas_fechadas_antes(data)
+                self._label_preview_limpeza.configure(
+                    text=f"{qtd} comanda(s) sera(o) removida(s)")
+            else:
+                self._label_preview_limpeza.configure(text="")
+
+        entry_data.bind("<KeyRelease>", preview)
+
+        def confirmar():
+            data = entry_data.get().strip()
+            if not db.validar_data(data):
+                messagebox.showwarning("Aviso", "Data invalida. Use AAAA-MM-DD.")
+                return
+            qtd = db.contar_comandas_fechadas_antes(data)
+            if qtd == 0:
+                messagebox.showinfo("Limpeza", "Nenhuma comanda encontrada nesse periodo.")
+                return
+            if not messagebox.askyesno(
+                "Confirmar limpeza",
+                f"Remover {qtd} comanda(s) fechada(s) antes de {data}?\n\n"
+                f"Recomendado: faca um backup antes.\n"
+                f"Esta acao NAO pode ser desfeita."
+            ):
+                return
+            removidas = db.limpar_comandas_antigas(data)
+            janela.destroy()
+            messagebox.showinfo("Limpeza", f"{removidas} comanda(s) removida(s).")
+
+        ctk.CTkButton(
+            janela, text="Remover", font=FONTE_NORMAL, height=40,
+            fg_color=COR_VERMELHO, hover_color=COR_VERMELHO_HOVER,
+            command=confirmar
+        ).pack(pady=15)
 
 
 if __name__ == "__main__":
