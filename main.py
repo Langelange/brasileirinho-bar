@@ -180,10 +180,10 @@ class App(ctk.CTk):
             painel_esq, columns=cols_comandas, show="headings",
             style="Custom.Treeview"
         )
-        self.tree_comandas.heading("id", text="#")
-        self.tree_comandas.heading("cliente", text="Cliente")
-        self.tree_comandas.heading("total", text="Total (R$)")
-        self.tree_comandas.heading("hora", text="Aberta em")
+        self.tree_comandas.heading("id", text="#", anchor="center")
+        self.tree_comandas.heading("cliente", text="Cliente", anchor="w")
+        self.tree_comandas.heading("total", text="Total (R$)", anchor="e")
+        self.tree_comandas.heading("hora", text="Aberta em", anchor="center")
         self.tree_comandas.column("id", width=50, anchor="center")
         self.tree_comandas.column("cliente", width=150)
         self.tree_comandas.column("total", width=100, anchor="e")
@@ -241,11 +241,11 @@ class App(ctk.CTk):
             painel_dir, columns=cols_itens, show="headings",
             style="Custom.Treeview"
         )
-        self.tree_itens.heading("id", text="#")
-        self.tree_itens.heading("produto", text="Produto")
-        self.tree_itens.heading("qtd", text="Qtd")
-        self.tree_itens.heading("unitario", text="Unit. (R$)")
-        self.tree_itens.heading("subtotal", text="Subtotal (R$)")
+        self.tree_itens.heading("id", text="#", anchor="center")
+        self.tree_itens.heading("produto", text="Produto", anchor="w")
+        self.tree_itens.heading("qtd", text="Qtd", anchor="center")
+        self.tree_itens.heading("unitario", text="Unit. (R$)", anchor="e")
+        self.tree_itens.heading("subtotal", text="Subtotal (R$)", anchor="e")
         self.tree_itens.column("id", width=40, anchor="center")
         self.tree_itens.column("produto", width=180)
         self.tree_itens.column("qtd", width=50, anchor="center")
@@ -587,10 +587,10 @@ class App(ctk.CTk):
         self.tree_produtos = ttk.Treeview(
             tab, columns=cols_prod, show="headings", style="Custom.Treeview"
         )
-        self.tree_produtos.heading("id", text="#")
-        self.tree_produtos.heading("nome", text="Nome")
-        self.tree_produtos.heading("categoria", text="Categoria")
-        self.tree_produtos.heading("preco", text="Preço (R$)")
+        self.tree_produtos.heading("id", text="#", anchor="center")
+        self.tree_produtos.heading("nome", text="Nome", anchor="w")
+        self.tree_produtos.heading("categoria", text="Categoria", anchor="w")
+        self.tree_produtos.heading("preco", text="Preço (R$)", anchor="e")
         self.tree_produtos.column("id", width=50, anchor="center")
         self.tree_produtos.column("nome", width=300)
         self.tree_produtos.column("categoria", width=150)
@@ -736,10 +736,10 @@ class App(ctk.CTk):
         self.tree_clientes = ttk.Treeview(
             tab, columns=cols_cli, show="headings", style="Custom.Treeview"
         )
-        self.tree_clientes.heading("id", text="#")
-        self.tree_clientes.heading("nome", text="Nome")
-        self.tree_clientes.heading("telefone", text="Telefone")
-        self.tree_clientes.heading("desde", text="Cliente desde")
+        self.tree_clientes.heading("id", text="#", anchor="center")
+        self.tree_clientes.heading("nome", text="Nome", anchor="w")
+        self.tree_clientes.heading("telefone", text="Telefone", anchor="w")
+        self.tree_clientes.heading("desde", text="Cliente desde", anchor="center")
         self.tree_clientes.column("id", width=50, anchor="center")
         self.tree_clientes.column("nome", width=300)
         self.tree_clientes.column("telefone", width=150)
@@ -878,9 +878,9 @@ class App(ctk.CTk):
         self.tree_vendidos = ttk.Treeview(
             frame_tabelas, columns=cols_vend, show="headings", style="Custom.Treeview"
         )
-        self.tree_vendidos.heading("produto", text="Produto")
-        self.tree_vendidos.heading("qtd", text="Quantidade")
-        self.tree_vendidos.heading("total", text="Total (R$)")
+        self.tree_vendidos.heading("produto", text="Produto", anchor="w")
+        self.tree_vendidos.heading("qtd", text="Quantidade", anchor="center")
+        self.tree_vendidos.heading("total", text="Total (R$)", anchor="e")
         self.tree_vendidos.column("produto", width=300)
         self.tree_vendidos.column("qtd", width=100, anchor="center")
         self.tree_vendidos.column("total", width=120, anchor="e")
@@ -891,9 +891,9 @@ class App(ctk.CTk):
         self.tree_pagamentos = ttk.Treeview(
             frame_tabelas, columns=cols_pag, show="headings", style="Custom.Treeview"
         )
-        self.tree_pagamentos.heading("forma", text="Forma Pagamento")
-        self.tree_pagamentos.heading("qtd", text="Qtd")
-        self.tree_pagamentos.heading("valor", text="Valor (R$)")
+        self.tree_pagamentos.heading("forma", text="Forma Pagamento", anchor="w")
+        self.tree_pagamentos.heading("qtd", text="Qtd", anchor="center")
+        self.tree_pagamentos.heading("valor", text="Valor (R$)", anchor="e")
         self.tree_pagamentos.column("forma", width=180)
         self.tree_pagamentos.column("qtd", width=60, anchor="center")
         self.tree_pagamentos.column("valor", width=120, anchor="e")
